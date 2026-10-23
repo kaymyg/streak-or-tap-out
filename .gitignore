@@ -1,0 +1,15 @@
+node_modules/
+artifacts/
+cache/
+typechain-types/
+dist/
+.env
+web/deployed.json
+.env.base
+.env.*
+!.env.example
+!.env.base.example
+
+.vercel/
+
+deployments/

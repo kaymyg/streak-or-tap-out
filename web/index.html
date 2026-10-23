@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Streak or Tap Out</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #141a24; --line: #232c3b; --ink: #e6edf7;
+    --dim: #7d8ba3; --hot: #ff5c3d; --go: #3ddc84; --warn: #ffb020;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif;
+    display: flex; justify-content: center; padding: 24px 16px 64px;
+  }
+  .wrap { width: 100%; max-width: 440px; }
+  h1 { font-size: 13px; letter-spacing: .18em; text-transform: uppercase;
+       color: var(--dim); margin: 0 0 16px; font-weight: 600; }
+  h1 b { color: var(--hot); font-weight: 600; }
+  .card { background: var(--panel); border: 1px solid var(--line);
+          border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .row + .row { margin-top: 8px; }
+  .label { color: var(--dim); font-size: 13px; }
+  .val { font-family: var(--mono); font-size: 14px; }
+  .big { font-family: var(--mono); font-size: 32px; line-height: 1; }
+  button {
+    width: 100%; padding: 13px; border-radius: 10px; border: 1px solid var(--line);
+    background: #1d2634; color: var(--ink); font-size: 15px; font-weight: 600;
+    cursor: pointer; font-family: inherit; margin-bottom: 8px;
+  }
+  button:hover:not(:disabled) { background: #263142; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--hot); border-color: var(--hot); color: #140502; }
+  button.primary:hover:not(:disabled) { background: #ff7158; }
+  input {
+    width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: #10151e; color: var(--ink); font-family: var(--mono);
+    font-size: 18px; text-align: center; letter-spacing: .25em; text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  nav { display: flex; gap: 6px; margin-bottom: 12px; }
+  nav button { margin: 0; font-size: 13px; padding: 9px; }
+  nav button.on { background: var(--hot); border-color: var(--hot); color: #140502; }
+  #tapzone {
+    height: 190px; border-radius: 14px; border: 2px dashed var(--line);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; user-select: none; cursor: pointer; touch-action: manipulation;
+    background: #10151e; transition: transform .04s, background .1s;
+  }
+  #tapzone.live { border: 2px solid var(--hot); background: #1a1013; }
+  #tapzone.hit { transform: scale(.985); background: #241319; }
+  #tapzone.done { border-style: solid; border-color: var(--go); }
+  #tapcount { font-family: var(--mono); font-size: 56px; line-height: 1; }
+  #tapzone small { color: var(--dim); font-size: 13px; }
+  #bar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 10px; }
+  #barfill { height: 100%; width: 0%; background: var(--hot); }
+  .code { font-family: var(--mono); font-size: 30px; letter-spacing: .25em;
+          text-align: center; color: var(--hot); padding: 6px 0; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+  th { text-align: left; color: var(--dim); font-weight: 500; font-size: 12px;
+       padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  td { padding: 7px 0; border-bottom: 1px solid #1a212c; }
+  td.n { text-align: right; }
+  tr.me td { color: var(--hot); }
+  #log { font-family: var(--mono); font-size: 12px; color: var(--dim);
+         white-space: pre-wrap; word-break: break-word; margin-top: 12px;
+         max-height: 180px; overflow-y: auto; }
+  #log .err { color: var(--hot); } #log .ok { color: var(--go); } #log .warn { color: var(--warn); }
+  .hide { display: none !important; }
+  .note { color: var(--dim); font-size: 12px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Streak <b>or</b> Tap Out</h1>
+
+  <div class="card">
+    <div class="row"><span class="label">wallet</span><span class="val" id="addr">—</span></div>
+    <div class="row"><span class="label">$STREAK</span><span class="val" id="bal">—</span></div>
+    <div class="row"><span class="label">season points</span><span class="val" id="pts">—</span></div>
+  </div>
+
+  <button id="connect" class="primary">Connect wallet</button>
+
+  <div id="app" class="hide">
+    <nav>
+      <button id="tab-daily" class="on">Daily</button>
+      <button id="tab-duel">Duel</button>
+      <button id="tab-board">Board</button>
+    </nav>
+
+    <!-- shared tap surface -->
+    <div class="card" id="playcard">
+      <div id="tapzone">
+        <div id="tapcount">0</div>
+        <small id="taphint">pick a mode</small>
+      </div>
+      <div id="bar"><div id="barfill"></div></div>
+    </div>
+
+    <!-- DAILY -->
+    <section id="pane-daily">
+      <div class="card">
+        <div class="row">
+          <div><div class="label">current streak</div><div class="big" id="streak">—</div></div>
+          <div style="text-align:right"><div class="label">if you tap today</div><div class="big" id="proj">—</div></div>
+        </div>
+      </div>
+      <button id="playDaily" class="primary">Start today's round</button>
+      <button id="submitDaily" class="primary hide">Submit to chain</button>
+    </section>
+
+    <!-- DUEL -->
+    <section id="pane-duel" class="hide">
+      <div class="card" id="duelIdle">
+        <button id="duelCreate" class="primary">Create a duel</button>
+        <input id="duelCode" maxlength="6" placeholder="CODE" />
+        <button id="duelJoin">Join with code</button>
+        <div class="note">Points only. No stake, no pot, nothing on chain.</div>
+      </div>
+
+      <div class="card hide" id="duelActive">
+        <div class="code" id="duelCodeOut">——————</div>
+        <div class="row"><span class="label">status</span><span class="val" id="duelStatus">—</span></div>
+        <div class="row"><span class="label">you</span><span class="val" id="duelMine">—</span></div>
+        <div class="row"><span class="label">them</span><span class="val" id="duelTheirs">—</span></div>
+        <div class="note" id="duelNote"></div>
+      </div>
+      <button id="duelPlay" class="primary hide">Play your round</button>
+      <button id="duelRefresh" class="hide">Refresh</button>
+      <button id="duelLeave" class="hide">Back</button>
+    </section>
+
+    <!-- BOARD -->
+    <section id="pane-board" class="hide">
+      <div class="card">
+        <table>
+          <thead><tr><th>#</th><th>player</th><th class="n">pts</th><th class="n">W/D/L</th></tr></thead>
+          <tbody id="boardBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div id="log"></div>
+</div>
+
+<script type="module">
+// Local vendored copy first so development works with no network at all;
+// CDN fallback so the deployed bundle stays small (the vendored file is
+// ~512KB and does not need to travel through a deploy API).
+let ethers;
+try {
+  ({ ethers } = await import("./vendor/ethers.min.js"));
+} catch {
+  ({ ethers } = await import("https://cdn.jsdelivr.net/npm/ethers@6.17.0/+esm"));
+}
+
+// Where the verifier lives. Read at runtime from deployed.json rather than
+// baked in, because the page and the verifier are on different hosts in
+// production: the page is static on Vercel, the verifier is a long-lived
+// process elsewhere. Hardcoding localhost here would make the deployed site
+// silently call the visitor's own machine.
+let API = "http://localhost:8787";
+
+const TAP_ABI = [
+  "function tap(uint256 tapCount, uint256 day, uint256 avgTapCount, bytes sig)",
+  "event Tapped(address indexed player, uint256 indexed day, uint256 tapCount, uint256 streak, uint256 reward)",
+  "error WrongDay(uint256 provided, uint256 current)",
+  "error AlreadyTappedToday(uint256 lastDay)",
+  "error TapCountOutOfRange(uint256 tapCount)",
+  "error BadAverage()",
+  "error BadSignature()",
+  "error ZeroVerifier()",
+];
+const ERC20_ABI = ["function balanceOf(address) view returns (uint256)"];
+
+const $ = (id) => document.getElementById(id);
+function log(msg, cls = "") {
+  $("log").insertAdjacentHTML("afterbegin",
+    `<div class="${cls}">[${new Date().toLocaleTimeString()}] ${String(msg).replace(/</g,"&lt;")}</div>`);
+}
+
+let cfg, deployed, provider, signer, account, token = "";
+let tapContract, tokenContract;
+let round = null, signedTap = null, duel = null;
+let tapCount = 0, roundActive = false, mode = "daily";
+
+// --- api ---------------------------------------------------------------
+async function api(path, body, method) {
+  const headers = {};
+  if (body !== undefined) headers["content-type"] = "application/json";
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(API + path, {
+    method: method ?? (body === undefined ? "GET" : "POST"),
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error + (data.maxTaps ? ` (max ${data.maxTaps})` : ""));
+  return data;
+}
+
+function fatal(msg) {
+  log(msg, "err");
+  $("connect").disabled = true;
+  $("connect").textContent = "Not configured";
+}
+
+/**
+ * Boot in two distinct steps with distinct failures.
+ *
+ * The first version did `(await fetch(...)).json()` for both and shared one
+ * catch. When deployed.json was missing, Vercel served its HTML 404, .json()
+ * threw "Unexpected token 'T'", and the catch reported the still-default
+ * localhost API — so one missing file produced two unrelated-looking errors
+ * and sent a whole afternoon chasing the wrong one. Check res.ok, and say
+ * which step failed.
+ */
+(async function boot() {
+  let res;
+  try {
+    res = await fetch("./deployed.json", { cache: "no-store" });
+  } catch (e) {
+    return fatal(`could not fetch deployed.json: ${e.message}`);
+  }
+  if (!res.ok) {
+    return fatal(
+      `deployed.json is missing (HTTP ${res.status}). It is generated by ` +
+      `"npm run deploy:local" and must ship with the site — check web/.vercelignore.`
+    );
+  }
+  try {
+    deployed = await res.json();
+  } catch {
+    return fatal("deployed.json is not valid JSON — the host probably served an error page.");
+  }
+
+  if (deployed.apiBase) API = deployed.apiBase.replace(/\/$/, "");
+  if (location.protocol === "https:" && API.startsWith("http://") && !/\/\/(localhost|127\.0\.0\.1)/.test(API)) {
+    return fatal(`apiBase is plain http (${API}) on an https page — the browser will block it.`);
+  }
+
+  try {
+    const r = await fetch(`${API}/config`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    cfg = await r.json();
+  } catch (e) {
+    return fatal(`verifier unreachable at ${API} (${e.message}). Is it running, and is this origin in its ALLOWED_ORIGINS?`);
+  }
+
+  log(`verifier online · chain ${cfg.chainId} · api ${API}`, "ok");
+})();
+
+// --- connect + sign in -------------------------------------------------
+$("connect").onclick = async () => {
+  if (!window.ethereum) return log("no injected wallet found", "err");
+  try {
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    if (Number((await provider.getNetwork()).chainId) !== cfg.chainId) {
+      log("switching chain…", "warn");
+      await switchChain(cfg.chainId);
+      provider = new ethers.BrowserProvider(window.ethereum);
+    }
+    signer = await provider.getSigner();
+    account = await signer.getAddress();
+
+    tapContract = new ethers.Contract(cfg.dailyTap, TAP_ABI, signer);
+    tokenContract = new ethers.Contract(deployed.streak, ERC20_ABI, provider);
+
+    // SIWE once; everything after uses the bearer token. The token can never
+    // authorize a transaction — the on-chain signature is still bound to
+    // msg.sender.
+    const { nonce } = await api("/auth/nonce");
+    const message = buildSiwe({
+      // The host the browser is actually on — which is what SIWE is for. The
+      // server checks it against its own allowlist, so this cannot be widened
+      // by a client choosing its own value. Using a server-supplied constant
+      // instead meant apex-vs-www produced a 401 that looked like a signature
+      // bug.
+      domain: window.location.host,
+      address: ethers.getAddress(account),
+      uri: window.location.origin,
+      chainId: cfg.chainId,
+      nonce,
+      statement: "Sign in to Streak or Tap Out.",
+    });
+    const out = await api("/auth/verify", { message, signature: await signer.signMessage(message) });
+    token = out.token;
+
+    // A wallet can change network or account at any time. Surface it rather
+    // than letting the next action fail somewhere confusing.
+    window.ethereum.on?.("chainChanged", (hex) => {
+      const id = parseInt(hex, 16);
+      if (cfg && id !== cfg.chainId) {
+        log(`wallet switched to chain ${id}; this game is on ${cfg.chainId}. Submissions are blocked until you switch back.`, "warn");
+      }
+    });
+    window.ethereum.on?.("accountsChanged", () => location.reload());
+
+    $("addr").textContent = account.slice(0,6) + "…" + account.slice(-4);
+    $("connect").classList.add("hide");
+    $("app").classList.remove("hide");
+    $("taphint").textContent = "press Start to begin a round";
+    await refresh();
+    log(`signed in as ${account}`, "ok");
+  } catch (e) { log(e.message ?? String(e), "err"); }
+};
+
+async function switchChain(id) {
+  const hex = "0x" + id.toString(16);
+  try {
+    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex }] });
+  } catch (e) {
+    if (e.code !== 4902) throw e;
+    await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
+      chainId: hex, chainName: "Localhost 8545",
+      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      rpcUrls: [deployed.rpcUrl || "http://127.0.0.1:8545"],
+    }]});
+  }
+}
+
+// EIP-4361 by hand so the page needs no bundler. The layout must match
+// exactly — blank line after the address, blank line after the statement.
+// scripts/e2e.ts builds it the same way so drift fails in CI, not in a wallet.
+function buildSiwe(o) {
+  return [
+    `${o.domain} wants you to sign in with your Ethereum account:`,
+    o.address, ``, o.statement, ``,
+    `URI: ${o.uri}`, `Version: 1`, `Chain ID: ${o.chainId}`,
+    `Nonce: ${o.nonce}`, `Issued At: ${new Date().toISOString()}`,
+  ].join("\n");
+}
+
+async function refresh() {
+  const st = await api(`/status/${account}`);
+  $("streak").textContent = st.streak;
+  $("proj").textContent = st.tappedToday ? "—" : st.projectedStreak;
+  $("pts").textContent = `${st.standing.points} (${st.standing.wins}W ${st.standing.draws}D ${st.standing.losses}L)`;
+  $("bal").textContent = Number(ethers.formatUnits(await tokenContract.balanceOf(account), 18)).toFixed(2);
+  if (st.tappedToday) {
+    $("playDaily").disabled = true;
+    $("playDaily").textContent = "Already tapped today";
+  }
+}
+
+// --- tabs --------------------------------------------------------------
+for (const m of ["daily","duel","board"]) {
+  $(`tab-${m}`).onclick = async () => {
+    if (roundActive) return log("finish the round first", "warn");
+    mode = m;
+    for (const x of ["daily","duel","board"]) {
+      $(`tab-${x}`).classList.toggle("on", x === m);
+      $(`pane-${x}`).classList.toggle("hide", x !== m);
+    }
+    $("playcard").classList.toggle("hide", m === "board");
+    if (m === "board") await loadBoard();
+  };
+}
+
+async function loadBoard() {
+  const { standings } = await api("/leaderboard?n=20");
+  $("boardBody").innerHTML = standings.map((s, i) => `
+    <tr class="${s.player.toLowerCase() === account.toLowerCase() ? "me" : ""}">
+      <td>${i+1}</td><td>${s.player.slice(0,6)}…${s.player.slice(-4)}</td>
+      <td class="n">${s.points}</td><td class="n">${s.wins}/${s.draws}/${s.losses}</td>
+    </tr>`).join("") || `<tr><td colspan="4" style="color:var(--dim)">no duels played yet</td></tr>`;
+}
+
+// --- the round ---------------------------------------------------------
+function startRound(windowMs) {
+  tapCount = 0; roundActive = true;
+  const zone = $("tapzone");
+  zone.classList.add("live"); zone.classList.remove("done");
+  $("tapcount").textContent = "0";
+  $("taphint").textContent = "TAP!";
+  const t0 = performance.now();
+  (function tick() {
+    const pct = Math.min(1, (performance.now() - t0) / windowMs);
+    $("barfill").style.width = (pct * 100).toFixed(1) + "%";
+    if (pct < 1 && roundActive) requestAnimationFrame(tick);
+  })();
+  setTimeout(endRound, windowMs);
+}
+
+$("tapzone").addEventListener("pointerdown", () => {
+  if (!roundActive) return;
+  tapCount++;
+  $("tapcount").textContent = tapCount;
+  const z = $("tapzone");
+  z.classList.add("hit");
+  setTimeout(() => z.classList.remove("hit"), 40);
+});
+
+async function endRound() {
+  if (!roundActive) return;
+  roundActive = false;
+  $("tapzone").classList.remove("live");
+  $("tapzone").classList.add("done");
+  $("taphint").textContent = `${tapCount} taps — asking the verifier…`;
+
+  try {
+    // The server times the round on its own clock, which started slightly
+    // earlier than ours. The 5s window already exceeds MIN_ELAPSED_MS, so
+    // that skew only ever helps us.
+    const out = await api("/round/end", { roundId: round.roundId, tapCount });
+    if (round.purpose === "duel") {
+      duel = out.duel;
+      log(`duel round in: ${out.tapCount} taps`, "ok");
+      renderDuel();
+    } else {
+      signedTap = out;
+      log(`verifier signed ${out.tapCount} taps for day ${out.day}`, "ok");
+      $("taphint").textContent = `${tapCount} taps — signed, submit to claim`;
+      $("submitDaily").classList.remove("hide");
+      $("submitDaily").disabled = false;
+    }
+  } catch (e) {
+    log(e.message, "err");
+    $("taphint").textContent = "the verifier refused this round";
+    $("playDaily").disabled = false;
+    $("duelPlay").disabled = false;
+  }
+}
+
+// --- daily -------------------------------------------------------------
+$("playDaily").onclick = async () => {
+  try {
+    $("playDaily").disabled = true;
+    round = await api("/round/start", { purpose: "daily" });
+    log(`round open (attempt ${round.attempt}, ${round.attemptsRemaining} left today)`, "ok");
+    startRound(round.scoringWindowMs);
+  } catch (e) { log(e.message, "err"); $("playDaily").disabled = false; }
+};
+
+/**
+ * Re-check the wallet's network immediately before every write.
+ *
+ * Checking once at connect time is not enough: the user can switch networks
+ * afterwards, and ethers' signer follows the wallet. A tap() sent to the
+ * DailyTap address on the wrong chain does NOT revert — there is no contract
+ * at that address there, and a transaction carrying data to an address with
+ * no code succeeds and does nothing. The explorer shows "Success", the points
+ * are never recorded, and the user pays gas to accomplish nothing. That is
+ * the most misleading failure this app can produce, so refuse before sending
+ * rather than explaining afterwards.
+ */
+async function assertChain() {
+  const hex = await window.ethereum.request({ method: "eth_chainId" });
+  const current = parseInt(hex, 16);
+  if (current !== cfg.chainId) {
+    throw new Error(
+      `your wallet is on chain ${current}, this game is on ${cfg.chainId}. ` +
+      `Nothing was sent. Switch networks and try again.`
+    );
+  }
+}
+
+$("submitDaily").onclick = async () => {
+  try {
+    $("submitDaily").disabled = true;
+    await assertChain();
+    log("submitting tap()…");
+    const tx = await tapContract.tap(
+      BigInt(signedTap.tapCount), BigInt(signedTap.day),
+      BigInt(signedTap.avgTapCount), signedTap.sig
+    );
+    log(`tx ${tx.hash.slice(0,18)}… waiting`);
+    const receipt = await tx.wait();
+    const ev = receipt.logs
+      .map((l) => { try { return tapContract.interface.parseLog(l); } catch { return null; } })
+      .find((p) => p && p.name === "Tapped");
+    if (ev) log(`minted ${Number(ethers.formatUnits(ev.args.reward,18)).toFixed(2)} $STREAK · streak ${ev.args.streak}`, "ok");
+    $("submitDaily").classList.add("hide");
+    await refresh();
+  } catch (e) {
+    log(`tap() reverted: ${e?.revert?.name ?? e?.shortMessage ?? e.message}`, "err");
+    $("submitDaily").disabled = false;
+  }
+};
+
+// --- duel --------------------------------------------------------------
+$("duelCreate").onclick = async () => {
+  try { duel = await api("/duel/create", {}); renderDuel(); log(`duel ${duel.code} created`, "ok"); }
+  catch (e) { log(e.message, "err"); }
+};
+
+$("duelJoin").onclick = async () => {
+  const code = $("duelCode").value.trim().toUpperCase();
+  try { duel = await api("/duel/join", { code }); renderDuel(); log(`joined ${duel.code}`, "ok"); }
+  catch (e) { log(e.message, "err"); }
+};
+
+$("duelRefresh").onclick = async () => {
+  try { duel = await api(`/duel/${duel.id}`); renderDuel(); }
+  catch (e) { log(e.message, "err"); }
+};
+
+$("duelLeave").onclick = () => { duel = null; renderDuel(); };
+
+$("duelPlay").onclick = async () => {
+  try {
+    $("duelPlay").disabled = true;
+    round = await api("/round/start", { purpose: "duel", duelId: duel.id });
+    startRound(round.scoringWindowMs);
+  } catch (e) { log(e.message, "err"); $("duelPlay").disabled = false; }
+};
+
+function renderDuel() {
+  const idle = duel === null;
+  $("duelIdle").classList.toggle("hide", !idle);
+  $("duelActive").classList.toggle("hide", idle);
+  for (const b of ["duelPlay","duelRefresh","duelLeave"]) $(b).classList.toggle("hide", idle);
+  if (idle) return;
+
+  const mine = duel.challenger?.player?.toLowerCase() === account.toLowerCase()
+    ? duel.challenger : duel.opponent;
+  const theirs = mine === duel.challenger ? duel.opponent : duel.challenger;
+
+  $("duelCodeOut").textContent = duel.code;
+  $("duelStatus").textContent = duel.result ?? duel.status;
+  $("duelMine").textContent = mine?.score ?? (mine?.played ? "•" : "not played");
+  // A score stays hidden until you have played, so nobody decides how hard to
+  // try after seeing the target.
+  $("duelTheirs").textContent = theirs === null ? "waiting for someone"
+    : theirs.score !== null ? theirs.score
+    : theirs.played ? "played (hidden)" : "not played";
+
+  const canPlay = !duel.youPlayed && duel.status !== "settled" && duel.status !== "expired";
+  $("duelPlay").classList.toggle("hide", !canPlay);
+  $("duelPlay").disabled = false;
+
+  $("duelNote").textContent =
+    duel.result === "won" ? "You won. +3 season points."
+    : duel.result === "lost" ? "You lost. +1 for showing up."
+    : duel.result === "draw" ? "Draw. +2 each."
+    : duel.youPlayed ? "Share the code — they have 24 hours."
+    : "Tap when ready. Their score stays hidden until you do.";
+
+  if (duel.result) refresh().catch(() => {});
+}
+</script>
+</body>
+</html>

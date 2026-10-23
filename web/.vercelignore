@@ -1,0 +1,7 @@
+# Intentionally almost empty.
+#
+# Without a .vercelignore, the Vercel CLI falls back to .gitignore — which
+# excludes web/deployed.json. The page fetches that file at boot to learn the
+# contract addresses and where the verifier lives, so a deploy without it
+# produces a site that loads and then immediately fails. This file exists to
+# stop that fallback.
