@@ -1,0 +1,3 @@
+# Paths CodeQL skips: deliberately vulnerable samples or vendored third party code.
+paths-ignore:
+  - 'web/vendor/**'
