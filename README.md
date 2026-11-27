@@ -345,3 +345,8 @@ In rough order of what the project actually needs:
 4. **Sinks** — cosmetics, season entry. These are the durable revenue line and
    the only thing that gives $STREAK a reason to be spent rather than sold.
 5. **Solana, or never.** Not until Base has players.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get set up and run the checks,
+and [SECURITY.md](SECURITY.md) for reporting vulnerabilities privately.
